@@ -1,0 +1,17 @@
+# Local user settings and secrets
+aqua-claude-config.json
+*.local.json
+*.secret.*
+*.key
+*.pem
+
+# Temporary launcher files
+aqua-claude-launch.ps1
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
