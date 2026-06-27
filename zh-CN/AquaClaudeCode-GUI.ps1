@@ -5,6 +5,33 @@ $ErrorActionPreference = "Stop"
 $AppDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ConfigPath = Join-Path $AppDir "aqua-claude-config.json"
 
+function Get-DefaultWorkingDirectory {
+    $driveRoot = [System.IO.Path]::GetPathRoot($AppDir)
+    if (-not [string]::IsNullOrWhiteSpace($driveRoot) -and (Test-Path -LiteralPath $driveRoot -PathType Container)) {
+        return $driveRoot
+    }
+
+    return $AppDir
+}
+
+function Resolve-WorkingDirectory($Value) {
+    $target = $Value
+    if ([string]::IsNullOrWhiteSpace($target)) {
+        return $null
+    }
+
+    try {
+        $resolved = (Resolve-Path -LiteralPath $target -ErrorAction Stop).ProviderPath
+        if (Test-Path -LiteralPath $resolved -PathType Container) {
+            return $resolved
+        }
+    } catch {
+        return $null
+    }
+
+    return $null
+}
+
 function Read-Config {
     if (Test-Path -LiteralPath $ConfigPath) {
         try {
@@ -16,7 +43,7 @@ function Read-Config {
     return $null
 }
 
-function Save-Config($BaseUrl, $ApiKey, $Model, $ClearKeyOnClose = $true) {
+function Save-Config($BaseUrl, $ApiKey, $Model, $ClearKeyOnClose = $true, $WorkingDirectory = "") {
     $keyToSave = ""
     if (-not $ClearKeyOnClose) {
         $keyToSave = $ApiKey
@@ -25,6 +52,7 @@ function Save-Config($BaseUrl, $ApiKey, $Model, $ClearKeyOnClose = $true) {
         baseUrl = $BaseUrl
         apiKey = $keyToSave
         model = $Model
+        workingDirectory = $WorkingDirectory
         clearKeyOnClose = [bool]$ClearKeyOnClose
         updatedAt = (Get-Date).ToString("s")
     }
@@ -118,7 +146,7 @@ function Refresh-Models {
             }
         }
 
-        Save-Config $baseUrl $apiKey ([string]$modelBox.SelectedItem) $clearKeyCheckBox.Checked
+        Save-Config $baseUrl $apiKey ([string]$modelBox.SelectedItem) $clearKeyCheckBox.Checked $workingDirBox.Text.Trim()
         Set-Status "已拉取 $($ids.Count) 个模型" "SeaGreen"
         Add-Log "已拉取 $($ids.Count) 个模型。"
     } catch {
@@ -134,6 +162,7 @@ function Start-Claude {
     $baseUrl = Normalize-BaseUrl $baseUrlBox.Text
     $apiKey = $keyBox.Text.Trim()
     $model = [string]$modelBox.Text
+    $workingDirectory = Resolve-WorkingDirectory $workingDirBox.Text.Trim()
 
     if ([string]::IsNullOrWhiteSpace($apiKey)) {
         [System.Windows.Forms.MessageBox]::Show("请先输入 AquaCloud API Key。", "缺少 Key", "OK", "Warning") | Out-Null
@@ -143,8 +172,13 @@ function Start-Claude {
         [System.Windows.Forms.MessageBox]::Show("请先刷新并选择模型。如果列表为空，可以直接在模型框里手动输入模型 ID。", "缺少模型", "OK", "Warning") | Out-Null
         return
     }
+    if ([string]::IsNullOrWhiteSpace($workingDirectory)) {
+        [System.Windows.Forms.MessageBox]::Show("请选择一个存在的工作目录。Claude Code 会在这个目录里启动。", "工作目录无效", "OK", "Warning") | Out-Null
+        return
+    }
 
-    Save-Config $baseUrl $apiKey $model $clearKeyCheckBox.Checked
+    $workingDirBox.Text = $workingDirectory
+    Save-Config $baseUrl $apiKey $model $clearKeyCheckBox.Checked $workingDirectory
 
     $claudeCmd = Get-Command "claude" -ErrorAction SilentlyContinue
     if (-not $claudeCmd) {
@@ -157,23 +191,25 @@ function Start-Claude {
 `$env:ANTHROPIC_AUTH_TOKEN = '$($apiKey.Replace("'", "''"))'
 `$env:ANTHROPIC_MODEL = '$($model.Replace("'", "''"))'
 `$env:NO_PROXY = '127.0.0.1,localhost'
+Set-Location -LiteralPath '$($workingDirectory.Replace("'", "''"))'
 Remove-Item -LiteralPath `$PSCommandPath -Force -ErrorAction SilentlyContinue
 Write-Host 'AquaCloud -> Claude Code'
 Write-Host ('Base URL: ' + `$env:ANTHROPIC_BASE_URL)
 Write-Host ('Model: ' + `$env:ANTHROPIC_MODEL)
+Write-Host ('Working directory: ' + (Get-Location).Path)
 claude
 Read-Host 'Claude Code 已退出，按回车关闭窗口'
 "@
-    $tempPath = Join-Path $env:TEMP "aqua-claude-launch.ps1"
+    $tempPath = Join-Path $AppDir ("aqua-claude-launch-{0}.tmp.ps1" -f ([guid]::NewGuid().ToString("N")))
     Set-Content -LiteralPath $tempPath -Value $launchScript -Encoding UTF8
 
-    Add-Log "启动 Claude Code，模型：$model"
-    Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-File", "`"$tempPath`"")
+    Add-Log "启动 Claude Code，模型：$model，目录：$workingDirectory"
+    Start-Process -FilePath "powershell.exe" -WorkingDirectory $workingDirectory -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-File", "`"$tempPath`"")
 }
 
 function Save-Only {
     $model = [string]$modelBox.Text
-    Save-Config (Normalize-BaseUrl $baseUrlBox.Text) $keyBox.Text.Trim() $model $clearKeyCheckBox.Checked
+    Save-Config (Normalize-BaseUrl $baseUrlBox.Text) $keyBox.Text.Trim() $model $clearKeyCheckBox.Checked $workingDirBox.Text.Trim()
     Set-Status "已保存" "SeaGreen"
     if ($clearKeyCheckBox.Checked) {
         Add-Log "配置已保存，但 Key 不会写入本地文件。"
@@ -182,11 +218,28 @@ function Save-Only {
     }
 }
 
+function Select-WorkingDirectory {
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = "选择 Claude Code 启动后的工作目录"
+    $current = Resolve-WorkingDirectory $workingDirBox.Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($current)) {
+        $current = Get-DefaultWorkingDirectory
+    }
+    $dialog.SelectedPath = $current
+
+    if ($dialog.ShowDialog($form) -eq [System.Windows.Forms.DialogResult]::OK) {
+        $workingDirBox.Text = $dialog.SelectedPath
+        Add-Log "已选择工作目录：$($dialog.SelectedPath)"
+    }
+
+    $dialog.Dispose()
+}
+
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Aqua Claude Code 一键连接工具"
 $form.StartPosition = "CenterScreen"
-$form.Size = New-Object System.Drawing.Size(760, 560)
-$form.MinimumSize = New-Object System.Drawing.Size(720, 520)
+$form.Size = New-Object System.Drawing.Size(760, 650)
+$form.MinimumSize = New-Object System.Drawing.Size(720, 610)
 $form.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 10)
 
 $title = New-Object System.Windows.Forms.Label
@@ -265,10 +318,29 @@ $refreshButton.Size = New-Object System.Drawing.Size(128, 34)
 $refreshButton.Add_Click({ Refresh-Models })
 $form.Controls.Add($refreshButton)
 
+$workingDirLabel = New-Object System.Windows.Forms.Label
+$workingDirLabel.Text = "Claude Code 工作目录"
+$workingDirLabel.Location = New-Object System.Drawing.Point(28, 328)
+$workingDirLabel.Size = New-Object System.Drawing.Size(240, 24)
+$form.Controls.Add($workingDirLabel)
+
+$workingDirBox = New-Object System.Windows.Forms.TextBox
+$workingDirBox.Location = New-Object System.Drawing.Point(28, 354)
+$workingDirBox.Size = New-Object System.Drawing.Size(548, 30)
+$workingDirBox.Text = ""
+$form.Controls.Add($workingDirBox)
+
+$browseDirButton = New-Object System.Windows.Forms.Button
+$browseDirButton.Text = "选择目录"
+$browseDirButton.Location = New-Object System.Drawing.Point(590, 353)
+$browseDirButton.Size = New-Object System.Drawing.Size(128, 32)
+$browseDirButton.Add_Click({ Select-WorkingDirectory })
+$form.Controls.Add($browseDirButton)
+
 $startButton = New-Object System.Windows.Forms.Button
 $startButton.Text = "连接 Claude Code"
 $startButton.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 11, [System.Drawing.FontStyle]::Bold)
-$startButton.Location = New-Object System.Drawing.Point(28, 334)
+$startButton.Location = New-Object System.Drawing.Point(28, 408)
 $startButton.Size = New-Object System.Drawing.Size(690, 46)
 $startButton.Add_Click({ Start-Claude })
 $form.Controls.Add($startButton)
@@ -276,19 +348,19 @@ $form.Controls.Add($startButton)
 $clearKeyCheckBox = New-Object System.Windows.Forms.CheckBox
 $clearKeyCheckBox.Text = "关闭窗口时清除 Key（推荐）"
 $clearKeyCheckBox.Checked = $true
-$clearKeyCheckBox.Location = New-Object System.Drawing.Point(28, 388)
+$clearKeyCheckBox.Location = New-Object System.Drawing.Point(28, 462)
 $clearKeyCheckBox.Size = New-Object System.Drawing.Size(260, 28)
 $form.Controls.Add($clearKeyCheckBox)
 
 $statusLabel = New-Object System.Windows.Forms.Label
 $statusLabel.Text = "等待配置"
 $statusLabel.ForeColor = [System.Drawing.Color]::DimGray
-$statusLabel.Location = New-Object System.Drawing.Point(300, 392)
+$statusLabel.Location = New-Object System.Drawing.Point(300, 466)
 $statusLabel.Size = New-Object System.Drawing.Size(690, 24)
 $form.Controls.Add($statusLabel)
 
 $logBox = New-Object System.Windows.Forms.TextBox
-$logBox.Location = New-Object System.Drawing.Point(28, 426)
+$logBox.Location = New-Object System.Drawing.Point(28, 500)
 $logBox.Size = New-Object System.Drawing.Size(690, 76)
 $logBox.Multiline = $true
 $logBox.ScrollBars = "Vertical"
@@ -309,12 +381,18 @@ if ($config) {
         $modelBox.Text = [string]$config.model
         $modelBox.Tag = [string]$config.model
     }
+    if ($config.workingDirectory) {
+        $savedWorkingDirectory = Resolve-WorkingDirectory ([string]$config.workingDirectory)
+        if (-not [string]::IsNullOrWhiteSpace($savedWorkingDirectory)) {
+            $workingDirBox.Text = $savedWorkingDirectory
+        }
+    }
     Add-Log "已读取本地配置。"
 }
 
 $form.Add_FormClosing({
     if ($clearKeyCheckBox.Checked) {
-        Save-Config (Normalize-BaseUrl $baseUrlBox.Text) "" ([string]$modelBox.Text) $true
+        Save-Config (Normalize-BaseUrl $baseUrlBox.Text) "" ([string]$modelBox.Text) $true $workingDirBox.Text.Trim()
         $keyBox.Text = ""
     }
 })

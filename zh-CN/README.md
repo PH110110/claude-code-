@@ -1,6 +1,6 @@
 # Aqua Claude Code 一键连接工具
 
-这是给非技术用户使用的 Windows 小工具：双击打开，输入 AquaCloud Key，刷新模型，从下拉框选择模型，然后连接 Claude Code。
+这是给非技术用户使用的 Windows 纯净版小工具：双击打开，输入 AquaCloud Key，刷新模型，选择工作目录，然后在该目录中启动 Claude Code。
 
 ## 使用方法
 
@@ -8,19 +8,18 @@
 2. 输入 AquaCloud API Key。
 3. 点击“刷新模型”。
 4. 从“模型下拉选择”里选择模型。
-5. 点击“连接 Claude Code”。
+5. 在“Claude Code 工作目录”里选择你的项目目录。
+6. 点击“连接 Claude Code”。
 
 默认勾选“关闭窗口时清除 Key（推荐）”。关闭工具后，本地配置文件不会保留 API Key。
 
-## 上传 GitHub 前注意
+## 会保存什么
 
-请只上传外层的 `github-release` 目录，不要上传你的个人工作目录。
+- Base URL
+- 已选择的模型
+- 已选择的工作目录
+- 只有取消“关闭窗口时清除 Key”时，才会保存 API Key
 
-不要上传：
+## 纯净版说明
 
-- `aqua-claude-config.json`
-- 任何真实 API Key
-- 私人安装资料或笔记
-
-如果真实 Key 曾经提交到 GitHub，请立刻去 AquaCloud 后台重置 Key，并重新创建干净仓库。
-
+这个目录只包含启动脚本、双击入口和说明文档。本地配置文件、临时启动脚本、真实 Key 都会被 Git 忽略。

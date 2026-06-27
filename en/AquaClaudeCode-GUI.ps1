@@ -5,6 +5,33 @@ $ErrorActionPreference = "Stop"
 $AppDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ConfigPath = Join-Path $AppDir "aqua-claude-config.json"
 
+function Get-DefaultWorkingDirectory {
+    $driveRoot = [System.IO.Path]::GetPathRoot($AppDir)
+    if (-not [string]::IsNullOrWhiteSpace($driveRoot) -and (Test-Path -LiteralPath $driveRoot -PathType Container)) {
+        return $driveRoot
+    }
+
+    return $AppDir
+}
+
+function Resolve-WorkingDirectory($Value) {
+    $target = $Value
+    if ([string]::IsNullOrWhiteSpace($target)) {
+        return $null
+    }
+
+    try {
+        $resolved = (Resolve-Path -LiteralPath $target -ErrorAction Stop).ProviderPath
+        if (Test-Path -LiteralPath $resolved -PathType Container) {
+            return $resolved
+        }
+    } catch {
+        return $null
+    }
+
+    return $null
+}
+
 function Read-Config {
     if (Test-Path -LiteralPath $ConfigPath) {
         try {
@@ -16,7 +43,7 @@ function Read-Config {
     return $null
 }
 
-function Save-Config($BaseUrl, $ApiKey, $Model, $ClearKeyOnClose = $true) {
+function Save-Config($BaseUrl, $ApiKey, $Model, $ClearKeyOnClose = $true, $WorkingDirectory = "") {
     $keyToSave = ""
     if (-not $ClearKeyOnClose) {
         $keyToSave = $ApiKey
@@ -25,6 +52,7 @@ function Save-Config($BaseUrl, $ApiKey, $Model, $ClearKeyOnClose = $true) {
         baseUrl = $BaseUrl
         apiKey = $keyToSave
         model = $Model
+        workingDirectory = $WorkingDirectory
         clearKeyOnClose = [bool]$ClearKeyOnClose
         updatedAt = (Get-Date).ToString("s")
     }
@@ -118,9 +146,9 @@ function Refresh-Models {
             }
         }
 
-        Save-Config $baseUrl $apiKey ([string]$modelBox.SelectedItem) $clearKeyCheckBox.Checked
+        Save-Config $baseUrl $apiKey ([string]$modelBox.SelectedItem) $clearKeyCheckBox.Checked $workingDirBox.Text.Trim()
         Set-Status "Fetched $($ids.Count) models" "SeaGreen"
-        Add-Log "Fetched $($ids.Count) models。"
+        Add-Log "Fetched $($ids.Count) models."
     } catch {
         Set-Status "Fetch failed. Check the log." "Firebrick"
         Add-Log "Fetch failed: $($_.Exception.Message)"
@@ -134,6 +162,7 @@ function Start-Claude {
     $baseUrl = Normalize-BaseUrl $baseUrlBox.Text
     $apiKey = $keyBox.Text.Trim()
     $model = [string]$modelBox.Text
+    $workingDirectory = Resolve-WorkingDirectory $workingDirBox.Text.Trim()
 
     if ([string]::IsNullOrWhiteSpace($apiKey)) {
         [System.Windows.Forms.MessageBox]::Show("Please enter your AquaCloud API Key first.", "Missing Key", "OK", "Warning") | Out-Null
@@ -143,8 +172,13 @@ function Start-Claude {
         [System.Windows.Forms.MessageBox]::Show("Refresh and select a model first. If the list is empty, type the model ID directly into the model box.", "Missing Model", "OK", "Warning") | Out-Null
         return
     }
+    if ([string]::IsNullOrWhiteSpace($workingDirectory)) {
+        [System.Windows.Forms.MessageBox]::Show("Please choose an existing working directory. Claude Code will start in that folder.", "Invalid Working Directory", "OK", "Warning") | Out-Null
+        return
+    }
 
-    Save-Config $baseUrl $apiKey $model $clearKeyCheckBox.Checked
+    $workingDirBox.Text = $workingDirectory
+    Save-Config $baseUrl $apiKey $model $clearKeyCheckBox.Checked $workingDirectory
 
     $claudeCmd = Get-Command "claude" -ErrorAction SilentlyContinue
     if (-not $claudeCmd) {
@@ -157,36 +191,55 @@ function Start-Claude {
 `$env:ANTHROPIC_AUTH_TOKEN = '$($apiKey.Replace("'", "''"))'
 `$env:ANTHROPIC_MODEL = '$($model.Replace("'", "''"))'
 `$env:NO_PROXY = '127.0.0.1,localhost'
+Set-Location -LiteralPath '$($workingDirectory.Replace("'", "''"))'
 Remove-Item -LiteralPath `$PSCommandPath -Force -ErrorAction SilentlyContinue
 Write-Host 'AquaCloud -> Claude Code'
 Write-Host ('Base URL: ' + `$env:ANTHROPIC_BASE_URL)
 Write-Host ('Model: ' + `$env:ANTHROPIC_MODEL)
+Write-Host ('Working directory: ' + (Get-Location).Path)
 claude
 Read-Host 'Claude Code has exited. Press Enter to close this window.'
 "@
-    $tempPath = Join-Path $env:TEMP "aqua-claude-launch.ps1"
+    $tempPath = Join-Path $AppDir ("aqua-claude-launch-{0}.tmp.ps1" -f ([guid]::NewGuid().ToString("N")))
     Set-Content -LiteralPath $tempPath -Value $launchScript -Encoding UTF8
 
-    Add-Log "Starting Claude Code with model: $model"
-    Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-File", "`"$tempPath`"")
+    Add-Log "Starting Claude Code with model: $model, directory: $workingDirectory"
+    Start-Process -FilePath "powershell.exe" -WorkingDirectory $workingDirectory -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-File", "`"$tempPath`"")
 }
 
 function Save-Only {
     $model = [string]$modelBox.Text
-    Save-Config (Normalize-BaseUrl $baseUrlBox.Text) $keyBox.Text.Trim() $model $clearKeyCheckBox.Checked
+    Save-Config (Normalize-BaseUrl $baseUrlBox.Text) $keyBox.Text.Trim() $model $clearKeyCheckBox.Checked $workingDirBox.Text.Trim()
     Set-Status "Saved" "SeaGreen"
     if ($clearKeyCheckBox.Checked) {
-        Add-Log "配置Saved，但 Key 不会写入本地文件。"
+        Add-Log "Settings saved. The key will not be written to the local config file."
     } else {
-        Add-Log "配置Saved到 $ConfigPath"
+        Add-Log "Settings saved to $ConfigPath"
     }
+}
+
+function Select-WorkingDirectory {
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = "Choose the folder where Claude Code should start"
+    $current = Resolve-WorkingDirectory $workingDirBox.Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($current)) {
+        $current = Get-DefaultWorkingDirectory
+    }
+    $dialog.SelectedPath = $current
+
+    if ($dialog.ShowDialog($form) -eq [System.Windows.Forms.DialogResult]::OK) {
+        $workingDirBox.Text = $dialog.SelectedPath
+        Add-Log "Selected working directory: $($dialog.SelectedPath)"
+    }
+
+    $dialog.Dispose()
 }
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Aqua Claude Code One-Click Launcher"
 $form.StartPosition = "CenterScreen"
-$form.Size = New-Object System.Drawing.Size(760, 560)
-$form.MinimumSize = New-Object System.Drawing.Size(720, 520)
+$form.Size = New-Object System.Drawing.Size(760, 650)
+$form.MinimumSize = New-Object System.Drawing.Size(720, 610)
 $form.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 10)
 
 $title = New-Object System.Windows.Forms.Label
@@ -265,10 +318,29 @@ $refreshButton.Size = New-Object System.Drawing.Size(128, 34)
 $refreshButton.Add_Click({ Refresh-Models })
 $form.Controls.Add($refreshButton)
 
+$workingDirLabel = New-Object System.Windows.Forms.Label
+$workingDirLabel.Text = "Claude Code working directory"
+$workingDirLabel.Location = New-Object System.Drawing.Point(28, 328)
+$workingDirLabel.Size = New-Object System.Drawing.Size(260, 24)
+$form.Controls.Add($workingDirLabel)
+
+$workingDirBox = New-Object System.Windows.Forms.TextBox
+$workingDirBox.Location = New-Object System.Drawing.Point(28, 354)
+$workingDirBox.Size = New-Object System.Drawing.Size(548, 30)
+$workingDirBox.Text = ""
+$form.Controls.Add($workingDirBox)
+
+$browseDirButton = New-Object System.Windows.Forms.Button
+$browseDirButton.Text = "Browse"
+$browseDirButton.Location = New-Object System.Drawing.Point(590, 353)
+$browseDirButton.Size = New-Object System.Drawing.Size(128, 32)
+$browseDirButton.Add_Click({ Select-WorkingDirectory })
+$form.Controls.Add($browseDirButton)
+
 $startButton = New-Object System.Windows.Forms.Button
 $startButton.Text = "Launch Claude Code"
 $startButton.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 11, [System.Drawing.FontStyle]::Bold)
-$startButton.Location = New-Object System.Drawing.Point(28, 334)
+$startButton.Location = New-Object System.Drawing.Point(28, 408)
 $startButton.Size = New-Object System.Drawing.Size(690, 46)
 $startButton.Add_Click({ Start-Claude })
 $form.Controls.Add($startButton)
@@ -276,19 +348,19 @@ $form.Controls.Add($startButton)
 $clearKeyCheckBox = New-Object System.Windows.Forms.CheckBox
 $clearKeyCheckBox.Text = "Clear key when closing (recommended)"
 $clearKeyCheckBox.Checked = $true
-$clearKeyCheckBox.Location = New-Object System.Drawing.Point(28, 388)
+$clearKeyCheckBox.Location = New-Object System.Drawing.Point(28, 462)
 $clearKeyCheckBox.Size = New-Object System.Drawing.Size(260, 28)
 $form.Controls.Add($clearKeyCheckBox)
 
 $statusLabel = New-Object System.Windows.Forms.Label
 $statusLabel.Text = "Waiting for settings"
 $statusLabel.ForeColor = [System.Drawing.Color]::DimGray
-$statusLabel.Location = New-Object System.Drawing.Point(300, 392)
+$statusLabel.Location = New-Object System.Drawing.Point(300, 466)
 $statusLabel.Size = New-Object System.Drawing.Size(690, 24)
 $form.Controls.Add($statusLabel)
 
 $logBox = New-Object System.Windows.Forms.TextBox
-$logBox.Location = New-Object System.Drawing.Point(28, 426)
+$logBox.Location = New-Object System.Drawing.Point(28, 500)
 $logBox.Size = New-Object System.Drawing.Size(690, 76)
 $logBox.Multiline = $true
 $logBox.ScrollBars = "Vertical"
@@ -309,12 +381,18 @@ if ($config) {
         $modelBox.Text = [string]$config.model
         $modelBox.Tag = [string]$config.model
     }
+    if ($config.workingDirectory) {
+        $savedWorkingDirectory = Resolve-WorkingDirectory ([string]$config.workingDirectory)
+        if (-not [string]::IsNullOrWhiteSpace($savedWorkingDirectory)) {
+            $workingDirBox.Text = $savedWorkingDirectory
+        }
+    }
     Add-Log "Loaded local settings."
 }
 
 $form.Add_FormClosing({
     if ($clearKeyCheckBox.Checked) {
-        Save-Config (Normalize-BaseUrl $baseUrlBox.Text) "" ([string]$modelBox.Text) $true
+        Save-Config (Normalize-BaseUrl $baseUrlBox.Text) "" ([string]$modelBox.Text) $true $workingDirBox.Text.Trim()
         $keyBox.Text = ""
     }
 })

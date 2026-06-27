@@ -1,45 +1,19 @@
 # Aqua Claude Code Launcher
 
-A tiny Windows launcher that lets non-technical users connect AquaCloud models to Claude Code.
+中文 / English bilingual clean release for connecting AquaCloud models to Claude Code on Windows.
 
-The user flow is intentionally simple:
+## 下载 / Download
 
-1. Double-click the launcher.
-2. Enter an AquaCloud API key.
-3. Fetch models.
-4. Pick a model from the dropdown.
-5. Launch Claude Code.
+- 中文版：进入 `zh-CN/`，双击 `打开AquaClaudeCode工具.cmd`
+- English: open `en/`, then double-click `Open-AquaClaudeCode.cmd`
 
-By default, the API key is cleared when the window closes and is not written to the local config file.
+## 功能 / Features
 
-## Folders
-
-- `zh-CN/` - Chinese version.
-- `en/` - English version for overseas campaigns.
-
-## Before Publishing To GitHub
-
-Only publish this `github-release` folder.
-
-Do not publish files from your personal working folder, especially:
-
-- `aqua-claude-config.json`
-- Any file containing a real API key
-- Personal notes or private setup documents
-
-If a real key was ever committed, revoke it immediately in AquaCloud and rewrite the Git history or create a fresh repository.
-
-## Upload With Git
-
-```powershell
-cd D:\模型链接工具\github-release
-git init
-git add .
-git commit -m "Initial release"
-git branch -M main
-git remote add origin https://github.com/YOUR_NAME/YOUR_REPO.git
-git push -u origin main
-```
+- 输入 AquaCloud API Key
+- 拉取并选择可用模型
+- 自主选择 Claude Code 启动后的工作目录
+- 一键启动 Claude Code
+- 默认关闭窗口时清除 API Key
 
 ## Requirements
 
@@ -48,10 +22,12 @@ git push -u origin main
 - Claude Code installed and available as `claude` in PATH
 - AquaCloud API key
 
-## Security Behavior
+## Clean Release Notes
 
-- The key is held in memory while the window is open.
-- The key is passed to the launched Claude Code PowerShell session through environment variables.
-- The temporary launch script deletes itself immediately after setting environment variables.
-- With the default checkbox enabled, closing the launcher clears the saved key.
+This repository intentionally contains only the launcher, command files, README files, and ignore rules.
 
+Local user files are ignored and should not be committed:
+
+- `aqua-claude-config.json`
+- `aqua-claude-launch-*.tmp.ps1`
+- Any real API key, key file, or private note
