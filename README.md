@@ -4,8 +4,13 @@
 
 ## 下载 / Download
 
-- 中文版：进入 `zh-CN/`，双击 `打开AquaClaudeCode工具.cmd`
-- English: open `en/`, then double-click `Open-AquaClaudeCode.cmd`
+- 中文版：[Download latest zh-CN](https://github.com/PH110110/claude-code-/releases/latest/download/AquaClaudeCode-zh-CN.zip)
+- English: [Download latest en](https://github.com/PH110110/claude-code-/releases/latest/download/AquaClaudeCode-en.zip)
+
+下载后解压：
+
+- 中文版：双击 `打开AquaClaudeCode工具.cmd`
+- English: double-click `Open-AquaClaudeCode.cmd`
 
 ## 功能 / Features
 

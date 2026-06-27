@@ -2,14 +2,19 @@
 
 这是给非技术用户使用的 Windows 纯净版小工具：双击打开，输入 AquaCloud Key，刷新模型，选择工作目录，然后在该目录中启动 Claude Code。
 
+## 下载
+
+[下载最新版中文包](https://github.com/PH110110/claude-code-/releases/latest/download/AquaClaudeCode-zh-CN.zip)
+
 ## 使用方法
 
-1. 双击 `打开AquaClaudeCode工具.cmd`。
-2. 输入 AquaCloud API Key。
-3. 点击“刷新模型”。
-4. 从“模型下拉选择”里选择模型。
-5. 在“Claude Code 工作目录”里选择你的项目目录。
-6. 点击“连接 Claude Code”。
+1. 下载并解压最新版中文包。
+2. 双击 `打开AquaClaudeCode工具.cmd`。
+3. 输入 AquaCloud API Key。
+4. 点击“刷新模型”。
+5. 从“模型下拉选择”里选择模型。
+6. 在“Claude Code 工作目录”里选择你的项目目录。
+7. 点击“连接 Claude Code”。
 
 默认勾选“关闭窗口时清除 Key（推荐）”。关闭工具后，本地配置文件不会保留 API Key。
 

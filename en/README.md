@@ -2,14 +2,19 @@
 
 This is a clean Windows launcher for non-technical users. Double-click it, enter an AquaCloud API key, fetch models, choose a working directory, and launch Claude Code in that folder.
 
+## Download
+
+[Download latest English version](https://github.com/PH110110/claude-code-/releases/latest/download/AquaClaudeCode-en.zip)
+
 ## How To Use
 
-1. Double-click `Open-AquaClaudeCode.cmd`.
-2. Enter your AquaCloud API key.
-3. Click `Fetch Models`.
-4. Pick a model from the dropdown.
-5. Choose the `Claude Code working directory`.
-6. Click `Launch Claude Code`.
+1. Download and unzip the latest English package.
+2. Double-click `Open-AquaClaudeCode.cmd`.
+3. Enter your AquaCloud API key.
+4. Click `Fetch Models`.
+5. Pick a model from the dropdown.
+6. Choose the `Claude Code working directory`.
+7. Click `Launch Claude Code`.
 
 The `Clear key when closing` option is enabled by default. When the window closes, the local config file will not keep the API key.
 
